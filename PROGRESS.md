@@ -1,7 +1,7 @@
 # CPI Food Rescue Platform - Implementation Progress
 
-**Last Updated**: 2026-09-10  
-**Person 6 Module**: Admin, Analytics, Integration & Final Assembly
+**Last Updated**: 2026-09-16  
+**Person 6 Module**: Admin, Analytics, Integration & Final Assembly (see also Person 1 and Person 4 sections below)
 
 ---
 
@@ -110,7 +110,7 @@ Person 6 is responsible for:
 - [ ] Person 1 (Auth): Complete auth endpoints for admin login tests
 - [ ] Person 2 (Donor): Donor registration/management endpoints
 - [ ] Person 3 (NGO): NGO registration endpoints 
-- [ ] Person 4 (Matching): Complete matching algorithm implementation
+- [x] Person 4 (Matching): Matching algorithm implemented and tested — pending endpoint wiring into the live backend (see Person 4 section below)
 - [ ] Person 5 (Logistics): Driver assignment and route endpoints
 
 ### Analytics Frontend
@@ -178,9 +178,9 @@ Person 6 is responsible for:
 | Source | Endpoint | Status | Purpose |
 |--------|----------|--------|---------|
 | Person 1 | `/api/v1/auth/login` | ⏳ Pending | Admin authentication for tests |
-| Person 4 | `/api/v1/matching/{id}/candidates` | ⏳ Pending | Match testing |
-| Person 4 | `/api/v1/matching/{id}/accept` | ⏳ Pending | Accept testing |
-| Person 4 | `/api/v1/matching/{id}/reject` | ⏳ Pending | Rematch testing |
+| Person 4 | `/api/v1/matching/{id}/candidates` | 🚧 Algorithm ready, endpoint not yet mounted | Match testing |
+| Person 4 | `/api/v1/matching/{id}/accept` | ⏳ Pending (owned by Person 1) | Accept testing |
+| Person 4 | `/api/v1/matching/{id}/reject` | 🚧 `rematch()` ready, endpoint not yet mounted | Rematch testing |
 
 ---
 
@@ -360,3 +360,52 @@ Tested end-to-end against real Postgres 16 + Redis 7 (docker-compose, not SQLite
 - Seed an initial admin: `python -m app.scripts.seed_admin --email admin@cpi.local --password <yours>`
 - `NGO.verification_status` (read via `GET /ngos/{id}`, written via your `PATCH /admin/ngos/{id}/verify`) is the same field Person 4's matching engine should filter on
 - WebSocket broker is live — if your admin dashboard wants real-time NGO verification updates, emit them via `manager.broadcast("donations", {...})` (or add a new channel) from your verify endpoint the same way donations/router.py does
+
+## Person 4 Module — Matching & Optimisation Engine
+
+**Module owner:** Person 4 (Matching & Optimisation Engine)
+**Branch:** `person4` (PR open against `main`)
+**code path:** `backend/matching_engine` 
+**Status:** Core algorithm complete, unit-tested, and integration-ready. Not yet mounted as a live endpoint in the running backend — that wiring is the next step (see "For Person 1" below).
+
+### What's implemented
+
+**`matching_engine/`** — pure Python package, no DB/ORM/auth dependency, importable and testable on its own:
+
+- `candidate_filter.py` — the six hard constraints (food available → NGO verified → category accepted → capacity → operating hours → expiry-feasible), run in that exact order, before any scoring. A candidate that fails any check is never scored.
+- `scoring.py` — the five explainable factors (`capacity_score`, `shelf_life_score`, `transit_score`, `demand_score`, `route_score`), each a pure `[0,1]`-clipped function, independently unit-tested. `route_score` is intentionally not `1/distance` — it blends normalized ETA and distance from a `RouteMetrics` object Person 5 supplies.
+- `optimizer.py` — `match()`: orchestrates filter → score → weighted rank → deterministic sort (score desc, then ETA asc, then `ngo_id` asc for tie-breaking).
+- `rematching.py` — `rematch()`: same pipeline with an `excluded_ngo_ids` set, for automatic re-offer after an NGO rejects/cancels. Never mutates the input NGO list.
+- `serializers.py` — produces the exact frozen response contract (`data.donation_id`, `data.weights_version_id`, `data.matches[]` with `score`, `capacity_score`, `shelf_life_score`, `transit_score`, `demand_score`, `route_score`, `eta_minutes`) — verified field-for-field against §5/§12 of the contract doc.
+- `models.py` — `Donation`, `NGOCandidate`, `NGODemand`, `RouteMetrics`, `MatchingWeights` as Pydantic v2 models with validation (positive quantity, expiry > available_from, lat/lon bounds, weights summing to 1.0, `available_capacity_kg <= storage_capacity_kg` when present).
+- `route_provider.py` — adapter interface (`RouteProvider`) so the engine never calls Person 5's API directly; `StaticRouteProvider` wraps already-fetched route data, `MockRouteProvider` is for tests.
+- `config.py` — `MatchingConfig` holds `eta_max_minutes` (default 60) so it's not a magic number scattered through scoring code.
+- `vrp.py` — stretch-module stub only (`NotImplementedError`), isolated from the MVP path, not started.
+- `api.py` — thin FastAPI router (`GET /api/v1/matching/{donation_id}/candidates`) with the exact repository/route-provider/weights lookups stubbed out (`_load_donation`, `_load_active_ngos`, `_load_routes`, `_load_active_weights`) for Person 1 to fill in against real Postgres data.
+
+### Verified (not just "should work")
+
+- 48 pytest tests passing (`matching_engine/tests/test_matching.py`), covering: all six hard-constraint rejection reasons individually, each scoring formula plus edge cases (zero/negative/huge capacity, ETA at/above `eta_max`, demand exceeding donation quantity, expired `valid_until`, mismatched food category), deterministic ranking/tie-breaking, a 2,000-candidate list (confirms O(n log n) ranking stays fast), full rematching behavior including "all NGOs excluded → empty matches", exact JSON schema shape, `weights_version_id` round-tripping, and reference-time determinism (no `datetime.now()` inside scoring — `reference_time` is always injected).
+- Reproduced the brief's own worked example (30 kg cooked donation, 2h expiry, NGOs A/B/C at 2/5/3 km): engine correctly ranks NGO B first (score 0.801) over the nearest option A (score 0.6895), confirming the "not nearest-NGO" requirement holds in code, not just in the formula on paper.
+- `fixtures/donations.json` (4 donations) and `fixtures/ngos.json` (8 NGOs covering every rejection path) both round-trip through the Pydantic models with no validation errors — usable standalone by Person 1/3 without needing this module to be blocked on anyone else.
+
+### Known simplifications / open items (flagged, not blockers)
+
+- **Not yet mounted**: `api.py`'s router exists but its four `_load_*` functions raise `NotImplementedError` — they need to be wired to Person 1's real donation/NGO repositories and a real `RouteProvider` calling Person 5's `/routes/calculate`. The algorithm itself has no such blocker; only the HTTP layer does.
+- **`route_score` formula**: the brief specifies it must not be `1/distance` but doesn't give an exact formula. Implemented as a 0.7 (normalized ETA) / 0.3 (normalized distance) blend for the MVP — isolated in `scoring.route_score()` so it's a one-function change if a richer traffic-aware version is wanted later.
+- **Demand priority** (`HIGH`/`MEDIUM`/etc.) is currently informational only — not folded into `demand_score` — per `MatchingConfig.demand_priority_weighting_enabled` (off by default). Enabling it is a deliberate, documented opt-in, not a silent formula change.
+- **Rematching is stateless**: `rematch()` expects the caller (Person 1's service layer) to accumulate `excluded_ngo_ids` across repeated rejections for the same donation — this module doesn't track rejection history itself.
+- **Concurrency/acceptance is explicitly out of scope here**: matching only ranks candidates. The row-level lock and `409 Conflict` on concurrent NGO acceptance is Person 1's responsibility at the `/matching/{id}/accept` endpoint, per §20 of the project brief — not reimplemented in this module.
+
+### For Person 1 (integration)
+
+- Mount `matching_engine.api.router` in the main FastAPI app, then fill in the four stub functions using your donation/NGO repositories.
+- `PATCH /donations/{id}` already accepts `matched_ngo_id`, `match_score`, `weights_version_id` per your section above — after calling `matching_engine.match(...)`, write `result.matches[0]` (if any) back through that same endpoint.
+- Candidate filtering checks `ngo.is_verified` — confirmed this is the same boolean your `GET /ngos/{id}` and Person 6's `PATCH /admin/ngos/{id}/verify` already read/write, so no schema change needed on your side.
+- Route data must be supplied as a `dict[ngo_id, RouteMetrics]` built from Person 5's `/routes/calculate` responses (or wrapped in `StaticRouteProvider`) — this module never calls a maps API itself.
+- On `POST /matching/{id}/reject`, call `matching_engine.rematch(...)` with the accumulated excluded-NGO set for that donation, then write the new top candidate the same way as initial matching.
+
+### For Person 6 (integration testing)
+
+- The six hard-constraint scenarios in your integration-test list (capacity rejection, expiry rejection, category rejection) map directly to `RejectionReason.INSUFFICIENT_CAPACITY`, `EXPIRY_NOT_FEASIBLE`, and `FOOD_CATEGORY_NOT_ACCEPTED` in `candidate_filter.py` — once Person 1 mounts the endpoint, your Test 1/2/3 scenarios should be able to assert on those exact rejection reasons via the internal diagnostics if you want reason-level assertions, not just "no match" assertions.
+- Test 4 (rematch-on-reject) and Test 7 (full E2E) both depend on the endpoint being mounted per "For Person 1" above — the algorithm side is ready now; only the wiring is outstanding.
