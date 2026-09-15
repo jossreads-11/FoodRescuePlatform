@@ -1,0 +1,89 @@
+[
+  {
+    "ngo_id": "ngo_017",
+    "location": { "latitude": 12.9345, "longitude": 77.6104 },
+    "available_capacity_kg": 72.0,
+    "accepted_categories": ["COOKED", "PACKAGED"],
+    "operating_hours": { "start": "08:00", "end": "20:00" },
+    "is_verified": true,
+    "demand": {
+      "food_category": "COOKED",
+      "required_quantity_kg": 30,
+      "priority": "HIGH",
+      "valid_until": "2026-09-09T20:00:00Z"
+    }
+  },
+  {
+    "ngo_id": "ngo_009",
+    "location": { "latitude": 12.9279, "longitude": 77.6271 },
+    "available_capacity_kg": 40.0,
+    "accepted_categories": ["COOKED"],
+    "operating_hours": { "start": "07:00", "end": "22:00" },
+    "is_verified": true,
+    "demand": {
+      "food_category": "COOKED",
+      "required_quantity_kg": 30,
+      "priority": "MEDIUM",
+      "valid_until": "2026-09-09T22:00:00Z"
+    }
+  },
+  {
+    "ngo_id": "ngo_022_slow_eta",
+    "location": { "latitude": 12.9611, "longitude": 77.6387 },
+    "available_capacity_kg": 35.0,
+    "accepted_categories": ["COOKED"],
+    "operating_hours": { "start": "09:00", "end": "18:00" },
+    "is_verified": true,
+    "demand": {
+      "food_category": "COOKED",
+      "required_quantity_kg": 30,
+      "priority": "HIGH",
+      "valid_until": "2026-09-09T20:00:00Z"
+    }
+  },
+  {
+    "ngo_id": "ngo_030_unverified",
+    "location": { "latitude": 12.9500, "longitude": 77.6200 },
+    "available_capacity_kg": 60.0,
+    "accepted_categories": ["COOKED", "PACKAGED"],
+    "operating_hours": { "start": "08:00", "end": "20:00" },
+    "is_verified": false,
+    "demand": { "food_category": "COOKED", "required_quantity_kg": 20, "priority": "LOW" }
+  },
+  {
+    "ngo_id": "ngo_035_low_capacity",
+    "location": { "latitude": 12.9400, "longitude": 77.6150 },
+    "available_capacity_kg": 10.0,
+    "accepted_categories": ["COOKED"],
+    "operating_hours": { "start": "08:00", "end": "20:00" },
+    "is_verified": true,
+    "demand": { "food_category": "COOKED", "required_quantity_kg": 10, "priority": "MEDIUM" }
+  },
+  {
+    "ngo_id": "ngo_041_packaging_only",
+    "location": { "latitude": 12.9200, "longitude": 77.6000 },
+    "available_capacity_kg": 60.0,
+    "accepted_categories": ["PACKAGED"],
+    "operating_hours": { "start": "08:00", "end": "20:00" },
+    "is_verified": true,
+    "demand": { "food_category": "PACKAGED", "required_quantity_kg": 15, "priority": "MEDIUM" }
+  },
+  {
+    "ngo_id": "ngo_050_closed_at_pickup",
+    "location": { "latitude": 12.9450, "longitude": 77.6300 },
+    "available_capacity_kg": 60.0,
+    "accepted_categories": ["COOKED"],
+    "operating_hours": { "start": "18:00", "end": "23:00" },
+    "is_verified": true,
+    "demand": { "food_category": "COOKED", "required_quantity_kg": 25, "priority": "HIGH" }
+  },
+  {
+    "ngo_id": "ngo_061_far_but_fast",
+    "location": { "latitude": 13.0100, "longitude": 77.6900 },
+    "available_capacity_kg": 45.0,
+    "accepted_categories": ["COOKED", "PACKAGED"],
+    "operating_hours": { "start": "00:00", "end": "23:59" },
+    "is_verified": true,
+    "demand": { "food_category": "COOKED", "required_quantity_kg": 25, "priority": "MEDIUM" }
+  }
+]
